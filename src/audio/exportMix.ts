@@ -1,13 +1,13 @@
 import RNFS from 'react-native-fs';
 import Share from 'react-native-share';
-import {mixStems} from './stemMix';
+import {mixFromSource} from './stemMix';
 import {readWavAsPcm, savePcmAsWav} from './decodeAudio';
 
 export type ExportFormat = 'wav' | 'm4a';
 
 export interface ExportOptions {
   vocalsPath: string;
-  instrumentalPath: string;
+  mixPath: string;
   vocalGain: number;
   musicGain: number;
   fileName: string;
@@ -17,14 +17,13 @@ export interface ExportOptions {
 export async function exportMixedAudio(
   options: ExportOptions,
 ): Promise<string> {
+  const mix = await readWavAsPcm(options.mixPath);
   const vocals = await readWavAsPcm(options.vocalsPath);
-  const instrumental = await readWavAsPcm(options.instrumentalPath);
-  const mixed = mixStems(
+  const mixed = mixFromSource(
+    mix,
     vocals,
-    instrumental,
     options.vocalGain,
     options.musicGain,
-    true,
   );
 
   const baseName = options.fileName.replace(/\.[^/.]+$/, '');

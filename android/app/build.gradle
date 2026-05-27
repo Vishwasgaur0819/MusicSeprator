@@ -118,8 +118,10 @@ android {
             if (keystorePropertiesFile.exists()) {
                 signingConfig signingConfigs.release
             } else {
-                // Install android/keystore.properties for Play Store / sideload signing.
-                signingConfig signingConfigs.debug
+                throw new GradleException(
+                    "Missing android/keystore.properties. " +
+                    "Copy android/keystore.properties.example and fill release signing values."
+                )
             }
             minifyEnabled enableProguardInReleaseBuilds
             shrinkResources enableProguardInReleaseBuilds

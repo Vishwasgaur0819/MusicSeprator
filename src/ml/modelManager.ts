@@ -3,9 +3,14 @@ import {
   MODEL_DOWNLOAD_URL,
   MODEL_FILENAME,
   MODEL_FP16_FILENAME,
+  MODEL_FP16_DOWNLOAD_URL,
 } from '../constants/audio';
 
 const MODELS_DIR = `${RNFS.CachesDirectoryPath}/models`;
+const FP16_TMP_PATH = `${MODELS_DIR}/${MODEL_FP16_FILENAME}.tmp`;
+const MIN_MODEL_SIZE_BYTES = 120 * 1024 * 1024;
+const DOWNLOAD_RETRIES = 2;
+let ongoingModelDownload: Promise<string> | null = null;
 
 export function getModelPath(): string {
   return `${MODELS_DIR}/${MODEL_FILENAME}`;
@@ -23,10 +28,18 @@ export async function getActiveModelPath(): Promise<string> {
   return getModelPath();
 }
 
+async function isUsableModel(path: string): Promise<boolean> {
+  if (!(await RNFS.exists(path))) {
+    return false;
+  }
+  const stat = await RNFS.stat(path);
+  return stat.size >= MIN_MODEL_SIZE_BYTES;
+}
+
 export async function isModelAvailable(): Promise<boolean> {
   return (
-    (await RNFS.exists(getModelPath())) ||
-    (await RNFS.exists(getModelFp16Path()))
+    (await isUsableModel(getModelPath())) ||
+    (await isUsableModel(getModelFp16Path()))
   );
 }
 
@@ -39,9 +52,108 @@ export async function ensureModelsDir(): Promise<void> {
 
 export function getModelSetupInstructions(): string {
   return (
-    `Download ${MODEL_FILENAME} (or the smaller ${MODEL_FP16_FILENAME}) from ${MODEL_DOWNLOAD_URL} ` +
-    `and place it at:\n${getModelPath()}`
+    `Model setup failed. You can retry from app home, or manually download ${MODEL_FP16_FILENAME} ` +
+    `from ${MODEL_DOWNLOAD_URL} and place it at:\n${getModelFp16Path()}`
   );
+}
+
+export type ModelReadinessState =
+  | 'ready'
+  | 'missing'
+  | 'downloading'
+  | 'failed';
+
+export interface ModelReadiness {
+  state: ModelReadinessState;
+  message: string;
+  progress?: {receivedBytes: number; totalBytes: number};
+}
+
+export async function getModelReadiness(): Promise<ModelReadiness> {
+  const fp16Ready = await isUsableModel(getModelFp16Path());
+  if (fp16Ready) {
+    return {state: 'ready', message: 'AI engine ready'};
+  }
+  if (ongoingModelDownload) {
+    return {state: 'downloading', message: 'Preparing AI engine…'};
+  }
+  return {state: 'missing', message: 'AI engine not downloaded yet'};
+}
+
+async function cleanupPartialModel(): Promise<void> {
+  if (await RNFS.exists(FP16_TMP_PATH)) {
+    await RNFS.unlink(FP16_TMP_PATH);
+  }
+}
+
+async function downloadFp16Model(
+  onProgress?: (received: number, total: number) => void,
+): Promise<string> {
+  await ensureModelsDir();
+  await cleanupPartialModel();
+
+  const result = RNFS.downloadFile({
+    fromUrl: MODEL_FP16_DOWNLOAD_URL,
+    toFile: FP16_TMP_PATH,
+    progressInterval: 500,
+    begin: res => {
+      onProgress?.(0, res.contentLength > 0 ? res.contentLength : 0);
+    },
+    progress: res => {
+      onProgress?.(res.bytesWritten, res.contentLength);
+    },
+  });
+
+  const response = await result.promise;
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error(`Model download failed with HTTP ${response.statusCode}`);
+  }
+
+  const stat = await RNFS.stat(FP16_TMP_PATH);
+  if (stat.size < MIN_MODEL_SIZE_BYTES) {
+    throw new Error(
+      `Downloaded model is incomplete (${Math.round(stat.size / 1024 / 1024)} MB).`,
+    );
+  }
+
+  if (await RNFS.exists(getModelFp16Path())) {
+    await RNFS.unlink(getModelFp16Path());
+  }
+  await RNFS.moveFile(FP16_TMP_PATH, getModelFp16Path());
+  return getModelFp16Path();
+}
+
+export async function ensureProductionModelReady(
+  onProgress?: (received: number, total: number) => void,
+): Promise<string> {
+  if (await isUsableModel(getModelFp16Path())) {
+    return getModelFp16Path();
+  }
+
+  if (ongoingModelDownload) {
+    return ongoingModelDownload;
+  }
+
+  ongoingModelDownload = (async () => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= DOWNLOAD_RETRIES; attempt++) {
+      try {
+        return await downloadFp16Model(onProgress);
+      } catch (error) {
+        lastError = error;
+        await cleanupPartialModel();
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Model download failed');
+  })();
+
+  try {
+    return await ongoingModelDownload;
+  } finally {
+    ongoingModelDownload = null;
+  }
 }
 
 export interface InstalledModelInfo {

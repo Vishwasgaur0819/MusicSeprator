@@ -1,17 +1,20 @@
 import React, {useCallback, useState} from 'react';
 import {Alert, StyleSheet, Text, View} from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import {pick, types} from '@react-native-documents/picker';
+import {keepLocalCopy, pick, types} from '@react-native-documents/picker';
 import {useFocusEffect} from '@react-navigation/native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import type {RootStackParamList} from '../types/navigation';
 import {createSession, findLatestReadySession} from '../storage/sessionManager';
 import {SEPARATION_PIPELINE_VERSION} from '../ml/separateStems';
 import {
+  ensureProductionModelReady,
   formatModelSize,
+  getModelReadiness,
   getModelSetupInstructions,
   getModelStatus,
   installModelFromFile,
+  type ModelReadiness,
   type ModelStatus,
 } from '../ml/modelManager';
 import {KEEP_SESSION_FILES_FOR_TESTING} from '../config/dev';
@@ -51,8 +54,38 @@ const STEPS = [
   {num: '3', label: 'Mix & export', icon: 'tune-vertical'},
 ] as const;
 
+async function resolvePickedAudioUri(
+  uri: string,
+  fileName: string,
+): Promise<string> {
+  if (!uri.startsWith('content://')) {
+    return uri;
+  }
+
+  const [copyResult] = await keepLocalCopy({
+    destination: 'cachesDirectory',
+    files: [{uri, fileName}],
+  });
+
+  if (copyResult.status === 'success') {
+    return copyResult.localUri;
+  }
+
+  throw new Error(
+    `Could not access selected file: ${copyResult.copyError}. Try selecting it from the Files app.`,
+  );
+}
+
 export function HomeScreen({navigation}: Props) {
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null);
+  const [modelReadiness, setModelReadiness] = useState<ModelReadiness>({
+    state: 'missing',
+    message: 'Preparing AI engine…',
+  });
+  const [modelProgress, setModelProgress] = useState<{
+    received: number;
+    total: number;
+  } | null>(null);
   const [lastSession, setLastSession] = useState<{
     sessionId: string;
     fileName: string;
@@ -62,6 +95,8 @@ export function HomeScreen({navigation}: Props) {
 
   const refreshModelStatus = useCallback(async () => {
     setModelStatus(await getModelStatus());
+    const readiness = await getModelReadiness();
+    setModelReadiness(readiness);
     if (KEEP_SESSION_FILES_FOR_TESTING) {
       setLastSession(await findLatestReadySession());
     } else {
@@ -69,17 +104,60 @@ export function HomeScreen({navigation}: Props) {
     }
   }, []);
 
+  const ensureModelReady = useCallback(async () => {
+    const readiness = await getModelReadiness();
+    setModelReadiness(readiness);
+    if (readiness.state === 'ready' || readiness.state === 'downloading') {
+      return;
+    }
+    try {
+      setModelReadiness({
+        state: 'downloading',
+        message: 'Preparing AI engine…',
+      });
+      await ensureProductionModelReady((received, total) => {
+        setModelProgress({received, total});
+        setModelReadiness({
+          state: 'downloading',
+          message: 'Preparing AI engine…',
+          progress: {receivedBytes: received, totalBytes: total},
+        });
+      });
+      setModelReadiness({state: 'ready', message: 'AI engine ready'});
+      setModelProgress(null);
+      await refreshModelStatus();
+    } catch (error) {
+      setModelReadiness({
+        state: 'failed',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Could not prepare AI engine',
+      });
+    }
+  }, [refreshModelStatus]);
+
   useFocusEffect(
     useCallback(() => {
       refreshModelStatus();
-    }, [refreshModelStatus]),
+      ensureModelReady();
+    }, [refreshModelStatus, ensureModelReady]),
   );
 
-  const modelReady = modelStatus !== null;
+  const modelReady = modelReadiness.state === 'ready' && modelStatus !== null;
 
   const handleUpload = async () => {
     try {
       setLoading(true);
+      if (!modelReady) {
+        await ensureModelReady();
+      }
+      const latestReadiness = await getModelReadiness();
+      if (latestReadiness.state !== 'ready') {
+        throw new Error(
+          latestReadiness.message || 'AI engine is still preparing. Try again.',
+        );
+      }
       const [result] = await pick({
         type: [types.audio],
         mode: 'import',
@@ -89,7 +167,8 @@ export function HomeScreen({navigation}: Props) {
         return;
       }
 
-      const paths = await createSession(result.uri, result.name);
+      const stableUri = await resolvePickedAudioUri(result.uri, result.name);
+      const paths = await createSession(stableUri, result.name);
       navigation.navigate('Processing', {
         sessionId: paths.sessionId,
         fileName: result.name,
@@ -219,8 +298,8 @@ export function HomeScreen({navigation}: Props) {
                   color={colors.warning}
                 />
                 <Text style={styles.staleHint}>
-                  Stems may be outdated — re-upload for the latest separation
-                  quality.
+                  Re-process needed — this session used an older mix engine.
+                  Re-upload the file for the new Music Only quality.
                 </Text>
               </View>
             ) : null}
@@ -252,15 +331,19 @@ export function HomeScreen({navigation}: Props) {
         <SectionHeader
           title="AI Model"
           subtitle={
-            modelReady && modelStatus
+            modelReadiness.state === 'ready'
               ? 'Ready for on-device separation'
-              : 'Required to get started'
+              : modelReadiness.state === 'downloading'
+                ? 'Preparing in background'
+                : 'Preparing on first run'
           }
           action={
-            modelReady ? (
+            modelReadiness.state === 'ready' ? (
               <Badge label="Ready" tone="success" />
+            ) : modelReadiness.state === 'downloading' ? (
+              <Badge label="Preparing" tone="primary" />
             ) : (
-              <Badge label="Missing" tone="danger" />
+              <Badge label="Pending" tone="danger" />
             )
           }
         />
@@ -309,7 +392,7 @@ export function HomeScreen({navigation}: Props) {
             ) : null}
 
             <AppButton
-              label="Install / Replace Model"
+              label="Advanced: Install / Replace Model"
               onPress={handleInstallModel}
               variant="secondary"
               icon={
@@ -324,22 +407,30 @@ export function HomeScreen({navigation}: Props) {
         ) : (
           <>
             <Text style={styles.cardText}>
-              Install the ONNX vocal separation model to enable AI-powered stem
-              splitting on your phone.
+              We automatically prepare the AI engine on first run. This keeps
+              setup simple like production karaoke apps.
             </Text>
-            <Text style={styles.modelHint}>{getModelSetupInstructions()}</Text>
+            <Text style={styles.modelHint}>
+              {modelReadiness.message}
+              {modelProgress && modelProgress.total > 0
+                ? ` (${Math.round(
+                    (modelProgress.received / modelProgress.total) * 100,
+                  )}%)`
+                : ''}
+            </Text>
             <AppButton
-              label="Install Model File"
-              onPress={handleInstallModel}
+              label="Retry AI setup"
+              onPress={ensureModelReady}
               variant="secondary"
               icon={
                 <MaterialCommunityIcons
-                  name="download-circle-outline"
+                  name="refresh"
                   size={20}
                   color={colors.text}
                 />
               }
             />
+            <Text style={styles.modelHint}>{getModelSetupInstructions()}</Text>
           </>
         )}
       </Card>

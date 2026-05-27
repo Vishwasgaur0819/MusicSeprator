@@ -73,5 +73,5 @@ export function encodeWav(samples: Float32Array): ArrayBuffer {
   return buffer;
 }
 
-/** Mix two stems with independent gains; optional normalization to prevent clipping. */
-export {mixStems} from './stemMix';
+/** Live-reconstruction mixer used by playback and export. */
+export {mixFromSource} from './stemMix';

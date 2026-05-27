@@ -9,7 +9,7 @@ import {
   destroySession,
   getSessionPaths,
 } from '../storage/sessionManager';
-import {separateStems} from '../ml/separateStems';
+import {separateStemsWithFallback} from '../ml/fallbackOrchestrator';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Processing'>;
 
@@ -26,7 +26,7 @@ export function ProcessingScreen({navigation, route}: Props) {
   useEffect(() => {
     const paths = getSessionPaths(sessionId, fileName);
 
-    separateStems(paths, setProgress, cancelRef.current)
+    separateStemsWithFallback(paths, setProgress, cancelRef.current)
       .then(() => {
         if (!cancelRef.current.cancelled) {
           navigation.replace('Mixer', {sessionId, fileName});

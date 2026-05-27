@@ -3,16 +3,23 @@ import {
   AudioBufferSourceNode,
   GainNode,
 } from 'react-native-audio-api';
-import {
-  getEffectiveVocalGain,
-} from './stemMix';
+import {getMusicGain, getVocalNetGain} from './stemMix';
 
 function toFileUri(path: string): string {
   return path.startsWith('file://') ? path : `file://${path}`;
 }
 
-const GAIN_AUDIBLE = 0.001;
-
+/**
+ * Live-reconstruction player.
+ *
+ *   output = musicGain * mix + (vocalGain - musicGain) * vocals
+ *
+ * Both `mix` and `vocals` sources are always started in sync. The vocal
+ * `GainNode` carries the signed net gain (`vocalGain - musicGain`), so when the
+ * user picks Music Only (vocalGain=0, musicGain=1), the vocal bus is driven at
+ * gain -1 and phase-cancels the singer out of `mix` instead of relying on a
+ * pre-rendered instrumental file with baked-in phase-inverted residue.
+ */
 export class StemPlayer {
   private context: AudioContext | null = null;
   private vocalsGain: GainNode | null = null;
@@ -22,7 +29,7 @@ export class StemPlayer {
   private vocalsBuffer: Awaited<
     ReturnType<AudioContext['decodeAudioData']>
   > | null = null;
-  private musicBuffer: Awaited<
+  private mixBuffer: Awaited<
     ReturnType<AudioContext['decodeAudioData']>
   > | null = null;
   private vocalGainValue = 1;
@@ -32,7 +39,7 @@ export class StemPlayer {
   private isPlaying = false;
   private isPaused = false;
 
-  async load(vocalsPath: string, instrumentalPath: string): Promise<void> {
+  async load(mixPath: string, vocalsPath: string): Promise<void> {
     await this.stop();
     this.context = new AudioContext();
     this.vocalsGain = this.context.createGain();
@@ -40,11 +47,9 @@ export class StemPlayer {
     this.vocalsGain.connect(this.context.destination);
     this.musicGain.connect(this.context.destination);
 
+    this.mixBuffer = await this.context.decodeAudioData(toFileUri(mixPath));
     this.vocalsBuffer = await this.context.decodeAudioData(
       toFileUri(vocalsPath),
-    );
-    this.musicBuffer = await this.context.decodeAudioData(
-      toFileUri(instrumentalPath),
     );
 
     this.applyGains();
@@ -53,37 +58,29 @@ export class StemPlayer {
   setVocalGain(value: number): void {
     this.vocalGainValue = value;
     this.applyGains();
-    this.restartIfPlaying();
   }
 
   setMusicGain(value: number): void {
     this.musicGainValue = value;
     this.applyGains();
-    this.restartIfPlaying();
   }
 
   private applyGains(): void {
     if (!this.vocalsGain || !this.musicGain) {
       return;
     }
-    this.vocalsGain.gain.value = getEffectiveVocalGain(this.vocalGainValue);
-    this.musicGain.gain.value = this.musicGainValue;
-  }
-
-  private restartIfPlaying(): void {
-    if (!this.isPlaying) {
-      return;
-    }
-    const position = this.getCurrentTime();
-    this.stopSources();
-    this.isPlaying = false;
-    this.isPaused = true;
-    this.pausedAt = position;
-    this.play();
+    this.musicGain.gain.value = getMusicGain(
+      this.vocalGainValue,
+      this.musicGainValue,
+    );
+    this.vocalsGain.gain.value = getVocalNetGain(
+      this.vocalGainValue,
+      this.musicGainValue,
+    );
   }
 
   play(): void {
-    if (!this.context || !this.vocalsBuffer || !this.musicBuffer) {
+    if (!this.context || !this.mixBuffer || !this.vocalsBuffer) {
       return;
     }
 
@@ -91,27 +88,16 @@ export class StemPlayer {
     this.applyGains();
 
     const offset = this.isPaused ? this.pausedAt : 0;
-    const effectiveVocalGain = getEffectiveVocalGain(this.vocalGainValue);
-    const playVocals = Math.abs(effectiveVocalGain) > GAIN_AUDIBLE;
-    const playMusic = this.musicGainValue > GAIN_AUDIBLE;
 
-    if (playVocals) {
-      this.vocalsSource = this.context.createBufferSource();
-      this.vocalsSource.buffer = this.vocalsBuffer;
-      this.vocalsSource.connect(this.vocalsGain!);
-      this.vocalsSource.start(0, offset);
-    }
+    this.musicSource = this.context.createBufferSource();
+    this.musicSource.buffer = this.mixBuffer;
+    this.musicSource.connect(this.musicGain!);
+    this.musicSource.start(0, offset);
 
-    if (playMusic) {
-      this.musicSource = this.context.createBufferSource();
-      this.musicSource.buffer = this.musicBuffer;
-      this.musicSource.connect(this.musicGain!);
-      this.musicSource.start(0, offset);
-    }
-
-    if (!playVocals && !playMusic) {
-      return;
-    }
+    this.vocalsSource = this.context.createBufferSource();
+    this.vocalsSource.buffer = this.vocalsBuffer;
+    this.vocalsSource.connect(this.vocalsGain!);
+    this.vocalsSource.start(0, offset);
 
     this.startedAt = this.context.currentTime - offset;
     this.isPlaying = true;
@@ -128,6 +114,28 @@ export class StemPlayer {
     this.isPaused = true;
   }
 
+  /**
+   * Reset playback to the start without tearing down the audio context.
+   * Use this when the user hits "restart" or when the song reaches its end —
+   * keeps decoded buffers and `GainNode`s alive so the next `play()` is instant.
+   */
+  rewindToStart(): void {
+    this.stopSources();
+    this.pausedAt = 0;
+    this.isPaused = false;
+    this.isPlaying = false;
+    this.startedAt = 0;
+  }
+
+  /** Rewind and immediately start playing from the beginning. */
+  restart(): void {
+    if (!this.context || !this.mixBuffer || !this.vocalsBuffer) {
+      return;
+    }
+    this.rewindToStart();
+    this.play();
+  }
+
   async stop(): Promise<void> {
     this.stopSources();
     if (this.context) {
@@ -137,7 +145,7 @@ export class StemPlayer {
     this.vocalsGain = null;
     this.musicGain = null;
     this.vocalsBuffer = null;
-    this.musicBuffer = null;
+    this.mixBuffer = null;
     this.isPlaying = false;
     this.isPaused = false;
     this.pausedAt = 0;
@@ -158,7 +166,7 @@ export class StemPlayer {
   }
 
   getDuration(): number {
-    return this.vocalsBuffer?.duration ?? this.musicBuffer?.duration ?? 0;
+    return this.mixBuffer?.duration ?? this.vocalsBuffer?.duration ?? 0;
   }
 
   get playing(): boolean {

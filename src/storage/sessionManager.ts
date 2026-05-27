@@ -35,7 +35,9 @@ export function getSessionPaths(
     vocalsAccum: `${dir}/vocals.acc`,
     vocalsWeight: `${dir}/vocals.wgt`,
     vocals: `${dir}/vocals.wav`,
+    mix: `${dir}/mix.wav`,
     instrumental: `${dir}/instrumental.wav`,
+    instrumentalClean: `${dir}/instrumental_clean.wav`,
     fileName,
   };
 }
@@ -52,8 +54,19 @@ export async function createSession(
   const ext = fileName.includes('.') ? fileName.split('.').pop() : 'mp3';
   const destPath = `${paths.dir}/original.${ext}`;
 
-  const normalizedUri = sourceUri.replace('file://', '');
-  await RNFS.copyFile(normalizedUri, destPath);
+  const normalizedSource = sourceUri.startsWith('file://')
+    ? decodeURI(sourceUri.replace('file://', ''))
+    : sourceUri;
+
+  try {
+    await RNFS.copyFile(normalizedSource, destPath);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Unknown file copy error';
+    throw new Error(
+      `Failed to import selected audio into app storage. ${message}`,
+    );
+  }
   paths.original = destPath;
 
   await RNFS.writeFile(
@@ -89,8 +102,8 @@ export async function findLatestReadySession(): Promise<{
     }
 
     const vocalsPath = `${entry.path}/vocals.wav`;
-    const instPath = `${entry.path}/instrumental.wav`;
-    if (!(await RNFS.exists(vocalsPath)) || !(await RNFS.exists(instPath))) {
+    const mixPath = `${entry.path}/mix.wav`;
+    if (!(await RNFS.exists(vocalsPath)) || !(await RNFS.exists(mixPath))) {
       continue;
     }
 

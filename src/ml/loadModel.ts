@@ -17,6 +17,17 @@ export async function loadModel(): Promise<InferenceSession> {
   }
 
   const modelPath = await getActiveModelPath();
+  // Guardrail for production stability: the full model can crash lower-memory
+  // Android devices during session initialization.
+  if (
+    Platform.OS === 'android' &&
+    !__DEV__ &&
+    !modelPath.toLowerCase().includes('fp16')
+  ) {
+    throw new Error(
+      'Installed model is full precision and may crash on this device. Install htdemucs_ft_vocals_fp16weights.onnx from the home screen and try again.',
+    );
+  }
   // NNAPI can hang on large models; prefer CPU on Android for reliability.
   const executionProviders = Platform.OS === 'ios' ? ['cpu'] : ['cpu'];
 

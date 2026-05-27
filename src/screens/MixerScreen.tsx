@@ -39,14 +39,17 @@ function formatTime(seconds: number): string {
 }
 
 function describeMix(vocalGain: number, musicGain: number): string {
-  if (vocalGain === 0 && musicGain > 0) {
-    return 'Music & tuning only — extra vocal suppression is active for a cleaner instrumental.';
+  if (vocalGain <= 0.005 && musicGain > 0) {
+    return 'Music only — vocals are removed from the original mix in real time.';
   }
-  if (musicGain === 0 && vocalGain > 0) {
+  if (musicGain <= 0.005 && vocalGain > 0) {
     return 'Singer voice only — no music in export.';
   }
-  if (vocalGain > 0 && vocalGain <= 0.15 && musicGain > 0) {
-    return 'Mostly music with very low vocals — karaoke style.';
+  if (vocalGain > 0 && vocalGain <= 0.5 && musicGain >= 0.9) {
+    return 'Mostly music with soft vocals on top — great for sing-along.';
+  }
+  if (vocalGain >= 0.95 && musicGain >= 0.95) {
+    return 'Original full mix — same as the source track.';
   }
   return 'Custom blend — export matches what you hear while playing.';
 }
@@ -71,7 +74,7 @@ export function MixerScreen({navigation, route}: Props) {
     let mounted = true;
 
     stemPlayer
-      .load(paths.vocals, paths.instrumental)
+      .load(paths.mix, paths.vocals)
       .then(() => {
         if (mounted) {
           setReady(true);
@@ -96,7 +99,7 @@ export function MixerScreen({navigation, route}: Props) {
         clearInterval(timerRef.current);
       }
     };
-  }, [paths.vocals, paths.instrumental]);
+  }, [paths.mix, paths.vocals]);
 
   useEffect(() => {
     stemPlayer.setVocalGain(vocalGain);
@@ -115,21 +118,30 @@ export function MixerScreen({navigation, route}: Props) {
     }
   }, [ready]);
 
-  const startTimer = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-    timerRef.current = setInterval(() => {
-      setCurrentTime(stemPlayer.getCurrentTime());
-    }, 250);
-  }, []);
-
   const stopTimer = useCallback(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
   }, []);
+
+  const startTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    timerRef.current = setInterval(() => {
+      const raw = stemPlayer.getCurrentTime();
+      const dur = stemPlayer.getDuration();
+      if (dur > 0 && raw >= dur) {
+        stemPlayer.rewindToStart();
+        setCurrentTime(dur);
+        setPlaying(false);
+        stopTimer();
+      } else {
+        setCurrentTime(dur > 0 ? Math.min(raw, dur) : raw);
+      }
+    }, 250);
+  }, [stopTimer]);
 
   const togglePlay = () => {
     if (!ready) {
@@ -146,6 +158,16 @@ export function MixerScreen({navigation, route}: Props) {
     }
   };
 
+  const handleRestart = () => {
+    if (!ready) {
+      return;
+    }
+    stemPlayer.restart();
+    setCurrentTime(0);
+    setPlaying(true);
+    startTimer();
+  };
+
   const handleExport = async (format: ExportFormat) => {
     if (vocalGain === 0 && musicGain === 0) {
       Alert.alert(
@@ -157,7 +179,7 @@ export function MixerScreen({navigation, route}: Props) {
 
     const filePath = await exportMixedAudio({
       vocalsPath: paths.vocals,
-      instrumentalPath: paths.instrumental,
+      mixPath: paths.mix,
       vocalGain,
       musicGain,
       fileName,
@@ -216,7 +238,9 @@ export function MixerScreen({navigation, route}: Props) {
     return unsubscribe;
   }, [navigation, sessionId]);
 
-  const progress = duration > 0 ? currentTime / duration : 0;
+  const safeCurrentTime =
+    duration > 0 ? Math.min(Math.max(currentTime, 0), duration) : 0;
+  const progress = duration > 0 ? safeCurrentTime / duration : 0;
 
   return (
     <Screen>
@@ -250,37 +274,66 @@ export function MixerScreen({navigation, route}: Props) {
           <View style={[styles.progressFill, {width: `${progress * 100}%`}]} />
         </View>
         <View style={styles.timeRow}>
-          <Text style={styles.time}>{formatTime(currentTime)}</Text>
+          <Text style={styles.time}>{formatTime(safeCurrentTime)}</Text>
           <Text style={styles.time}>{formatTime(duration)}</Text>
         </View>
 
-        <Pressable
-          onPress={togglePlay}
-          disabled={!ready}
-          style={({pressed}) => [
-            styles.playButton,
-            shadows.glow(colors.primary),
-            !ready && styles.playButtonDisabled,
-            pressed && ready && styles.playButtonPressed,
-          ]}>
-          <MaterialCommunityIcons
-            name={playing ? 'pause' : 'play'}
-            size={36}
-            color={colors.white}
-            style={playing ? undefined : styles.playIconOffset}
-          />
-        </Pressable>
+        <View style={styles.controlsRow}>
+          <Pressable
+            onPress={handleRestart}
+            disabled={!ready}
+            accessibilityLabel="Restart from beginning"
+            style={({pressed}) => [
+              styles.secondaryButton,
+              !ready && styles.secondaryButtonDisabled,
+              pressed && ready && styles.secondaryButtonPressed,
+            ]}>
+            <MaterialCommunityIcons
+              name="restart"
+              size={26}
+              color={ready ? colors.primary : colors.textMuted}
+            />
+          </Pressable>
+
+          <Pressable
+            onPress={togglePlay}
+            disabled={!ready}
+            accessibilityLabel={playing ? 'Pause' : 'Play'}
+            style={({pressed}) => [
+              styles.playButton,
+              shadows.glow(colors.primary),
+              !ready && styles.playButtonDisabled,
+              pressed && ready && styles.playButtonPressed,
+            ]}>
+            <MaterialCommunityIcons
+              name={playing ? 'pause' : 'play'}
+              size={36}
+              color={colors.white}
+              style={playing ? undefined : styles.playIconOffset}
+            />
+          </Pressable>
+
+          <View style={styles.secondaryButtonSpacer} />
+        </View>
       </Card>
 
-      <SectionHeader title="Presets" subtitle="Quick mix starting points" />
-      <MixPresets
-        vocalGain={vocalGain}
-        musicGain={musicGain}
-        onSelect={applyPreset}
-      />
+      <Card style={styles.presetCard} elevated>
+        <SectionHeader
+          title="Quick modes"
+          subtitle="Tap a mode to switch the mix instantly"
+        />
+        <MixPresets
+          vocalGain={vocalGain}
+          musicGain={musicGain}
+          onSelect={applyPreset}
+        />
+      </Card>
 
       <Card style={styles.slidersCard}>
-        <SectionHeader title="Mix controls" subtitle="Fine-tune each stem" />
+        <SectionHeader
+          title="Fine tune"
+          subtitle="Adjust each stem precisely"
+        />
         <StemSlider
           label="Singer's voice"
           description="Artist vocals (e.g. Arijit Singh)"
@@ -397,6 +450,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontVariant: ['tabular-nums'],
   },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.lg,
+  },
   playButton: {
     width: 72,
     height: 72,
@@ -414,8 +473,32 @@ const styles = StyleSheet.create({
   playIconOffset: {
     marginLeft: 4,
   },
+  secondaryButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryButtonSpacer: {
+    width: 52,
+    height: 52,
+  },
+  secondaryButtonDisabled: {
+    opacity: 0.4,
+  },
+  secondaryButtonPressed: {
+    transform: [{scale: 0.94}],
+    opacity: 0.85,
+  },
+  presetCard: {
+    marginBottom: spacing.lg,
+  },
   slidersCard: {
-    marginTop: spacing.lg,
+    marginBottom: spacing.md,
   },
   mixHintBox: {
     flexDirection: 'row',

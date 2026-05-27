@@ -14,19 +14,31 @@ interface ProcessingProgressProps {
 }
 
 const PHASES = [
+  {key: 'preflight', label: 'Prepare', icon: 'shield-check-outline'},
   {key: 'decoding', label: 'Decode', icon: 'file-music-outline'},
   {key: 'separating', label: 'Separate', icon: 'brain'},
-  {key: 'exporting', label: 'Export', icon: 'waveform'},
+  {key: 'uploading', label: 'Cloud', icon: 'cloud-upload-outline'},
+  {key: 'saving', label: 'Export', icon: 'waveform'},
 ] as const;
 
 function phaseIndex(phase: SeparationProgress['phase']): number {
-  if (phase === 'decoding') {
+  if (phase === 'preflight' || phase === 'downloading-model') {
     return 0;
   }
-  if (phase === 'separating') {
+  if (phase === 'decoding') {
     return 1;
   }
-  return 2;
+  if (phase === 'separating') {
+    return 2;
+  }
+  if (
+    phase === 'uploading' ||
+    phase === 'processing-cloud' ||
+    phase === 'downloading-stems'
+  ) {
+    return 3;
+  }
+  return 4;
 }
 
 export function ProcessingProgress({
@@ -98,6 +110,14 @@ export function ProcessingProgress({
               ? progress.total > 0
                 ? `Chunk ${progress.current} of ${progress.total}`
                 : 'Running AI separation…'
+              : progress.phase === 'downloading-model'
+                ? 'Downloading AI model…'
+                : progress.phase === 'uploading'
+                  ? 'Uploading audio to cloud…'
+                  : progress.phase === 'processing-cloud'
+                    ? 'Cloud separation running…'
+                    : progress.phase === 'downloading-stems'
+                      ? 'Downloading stems…'
               : progress.phase.charAt(0).toUpperCase() +
                 progress.phase.slice(1)}
           </Text>

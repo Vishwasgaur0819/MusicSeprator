@@ -1,8 +1,8 @@
 import React from 'react';
-import {Pressable, ScrollView, StyleSheet, Text} from 'react-native';
+import {Pressable, StyleSheet, Text, View} from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import {colors} from '../theme/colors';
-import {radii, spacing} from '../theme/layout';
+import {radii, shadows, spacing} from '../theme/layout';
 import {typography} from '../theme/typography';
 
 export interface MixPreset {
@@ -11,36 +11,39 @@ export interface MixPreset {
   vocalGain: number;
   musicGain: number;
   icon: string;
+  description: string;
 }
 
+/**
+ * The three primary mix modes. Sliders below act as fine-tune controls.
+ * - Music Only:  vocalGain=0, musicGain=1  → live `mix - vocals`
+ * - Low Vocal:   vocalGain=0.4, musicGain=1 → live `mix - 0.6 * vocals`
+ * - Vocals Only: vocalGain=1, musicGain=0  → live `vocals`
+ */
 export const MIX_PRESETS: MixPreset[] = [
   {
     id: 'music-only',
-    label: 'Music only',
+    label: 'Music Only',
     vocalGain: 0,
     musicGain: 1,
     icon: 'music-circle-outline',
+    description: 'Karaoke',
+  },
+  {
+    id: 'low-vocal',
+    label: 'Low Vocal',
+    vocalGain: 0.4,
+    musicGain: 1,
+    icon: 'microphone-minus',
+    description: '40% vocals',
   },
   {
     id: 'vocals-only',
-    label: 'Vocals only',
+    label: 'Vocals Only',
     vocalGain: 1,
     musicGain: 0,
     icon: 'microphone-variant',
-  },
-  {
-    id: 'karaoke',
-    label: 'Low vocals',
-    vocalGain: 0.1,
-    musicGain: 1,
-    icon: 'microphone-minus',
-  },
-  {
-    id: 'balanced',
-    label: 'Both full',
-    vocalGain: 1,
-    musicGain: 1,
-    icon: 'equalizer',
+    description: 'A cappella',
   },
 ];
 
@@ -56,8 +59,8 @@ function isPresetActive(
   musicGain: number,
 ): boolean {
   return (
-    Math.abs(preset.vocalGain - vocalGain) < 0.001 &&
-    Math.abs(preset.musicGain - musicGain) < 0.001
+    Math.abs(preset.vocalGain - vocalGain) < 0.005 &&
+    Math.abs(preset.musicGain - musicGain) < 0.005
   );
 }
 
@@ -67,10 +70,7 @@ export function MixPresets({
   onSelect,
 }: MixPresetsProps) {
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.row}>
+    <View style={styles.row}>
       {MIX_PRESETS.map(preset => {
         const active = isPresetActive(preset, vocalGain, musicGain);
         return (
@@ -78,56 +78,90 @@ export function MixPresets({
             key={preset.id}
             onPress={() => onSelect(preset.vocalGain, preset.musicGain)}
             style={({pressed}) => [
-              styles.chip,
-              active && styles.chipActive,
-              pressed && styles.chipPressed,
+              styles.tile,
+              active && styles.tileActive,
+              active && shadows.glow(colors.primary),
+              pressed && styles.tilePressed,
             ]}>
-            <MaterialCommunityIcons
-              name={preset.icon}
-              size={18}
-              color={active ? colors.primary : colors.textMuted}
-            />
-            <Text style={[styles.chipText, active && styles.chipTextActive]}>
+            <View
+              style={[
+                styles.iconWrap,
+                active && styles.iconWrapActive,
+              ]}>
+              <MaterialCommunityIcons
+                name={preset.icon}
+                size={24}
+                color={active ? colors.white : colors.primary}
+              />
+            </View>
+            <Text style={[styles.label, active && styles.labelActive]}>
               {preset.label}
+            </Text>
+            <Text
+              style={[
+                styles.description,
+                active && styles.descriptionActive,
+              ]}>
+              {preset.description}
             </Text>
           </Pressable>
         );
       })}
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: spacing.md,
   },
-  chip: {
-    flexDirection: 'row',
+  tile: {
+    flex: 1,
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radii.pill,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.lg,
     backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    marginRight: spacing.xs,
+    gap: spacing.sm,
   },
-  chipActive: {
-    backgroundColor: colors.primarySoft,
+  tileActive: {
+    backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  chipPressed: {
+  tilePressed: {
     opacity: 0.85,
+    transform: [{scale: 0.98}],
   },
-  chipText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    fontWeight: '600',
+  iconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.35)',
   },
-  chipTextActive: {
-    color: colors.text,
+  iconWrapActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  label: {
+    ...typography.headline,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  labelActive: {
+    color: colors.white,
+  },
+  description: {
+    ...typography.caption,
+    textAlign: 'center',
+  },
+  descriptionActive: {
+    color: 'rgba(255, 255, 255, 0.85)',
   },
 });

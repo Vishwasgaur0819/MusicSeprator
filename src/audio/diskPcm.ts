@@ -1,5 +1,5 @@
 import RNFS from 'react-native-fs';
-import {CHANNELS, VOCAL_REMOVAL_STRENGTH} from '../constants/audio';
+import {CHANNELS} from '../constants/audio';
 import {createWavHeader, float32ToInt16} from './pcmUtils';
 import {arrayBufferToBase64, base64ToBytes, bytesToBase64} from '../utils/base64';
 import {hannWeight} from './chunkAudio';
@@ -104,26 +104,36 @@ export async function accumulateVocalsFromStemsToDisk(
 }
 
 /**
- * Finalize overlap-add and write vocals + instrumental WAVs in small slices.
+ * Finalize overlap-add and write vocals.wav + mix.wav in small slices.
  * Peak RAM is one slice (~350 KB), not the full song.
+ *
+ * Live playback math (`output = musicGain * mix + (vocalGain - musicGain) * vocals`)
+ * needs the untouched source mix on disk, so we mirror the decoded float32 mix
+ * to a 16-bit WAV here instead of generating a derived instrumental file.
  */
 export async function exportStemsFromDisk(
   mixPcmPath: string,
   vocalsAccumPath: string,
   vocalsWeightPath: string,
   vocalsWavPath: string,
-  instrumentalWavPath: string,
+  mixWavPath: string,
   totalFrames: number,
   onProgress?: (current: number, total: number) => void,
-): Promise<void> {
+): Promise<{
+  suppressionProfile: 'live_reconstruction';
+  vocalsPeak: number;
+  mixPeak: number;
+}> {
   const totalSamples = totalFrames * CHANNELS;
   const dataSize = totalSamples * 2;
   const header = arrayBufferToBase64(createWavHeader(dataSize));
 
   await RNFS.writeFile(vocalsWavPath, header, 'base64');
-  await RNFS.writeFile(instrumentalWavPath, header, 'base64');
+  await RNFS.writeFile(mixWavPath, header, 'base64');
 
   const sliceCount = Math.ceil(totalFrames / EXPORT_SLICE_FRAMES);
+  let vocalsPeak = 0;
+  let mixPeak = 0;
 
   for (let slice = 0; slice < sliceCount; slice++) {
     const startFrame = slice * EXPORT_SLICE_FRAMES;
@@ -143,31 +153,35 @@ export async function exportStemsFromDisk(
 
     const sliceSamples = frameCount * CHANNELS;
     const vocalsSlice = new Float32Array(sliceSamples);
-    const instSlice = new Float32Array(sliceSamples);
 
     for (let i = 0; i < sliceSamples; i++) {
-      const vocal =
-        weightSlice[i] > 0 ? accumSlice[i] / weightSlice[i] : 0;
+      const vocal = weightSlice[i] > 0 ? accumSlice[i] / weightSlice[i] : 0;
       vocalsSlice[i] = vocal;
-      instSlice[i] = mixSlice[i] - vocal * VOCAL_REMOVAL_STRENGTH;
-      instSlice[i] = Math.max(-1, Math.min(1, instSlice[i]));
+      vocalsPeak = Math.max(vocalsPeak, Math.abs(vocal));
+      mixPeak = Math.max(mixPeak, Math.abs(mixSlice[i]));
     }
 
     const vocalInt16 = float32ToInt16(vocalsSlice);
-    const instInt16 = float32ToInt16(instSlice);
+    const mixInt16 = float32ToInt16(mixSlice);
     await RNFS.appendFile(
       vocalsWavPath,
       bytesToBase64(new Uint8Array(vocalInt16.buffer)),
       'base64',
     );
     await RNFS.appendFile(
-      instrumentalWavPath,
-      bytesToBase64(new Uint8Array(instInt16.buffer)),
+      mixWavPath,
+      bytesToBase64(new Uint8Array(mixInt16.buffer)),
       'base64',
     );
 
     onProgress?.(slice + 1, sliceCount);
   }
+
+  return {
+    suppressionProfile: 'live_reconstruction',
+    vocalsPeak,
+    mixPeak,
+  };
 }
 
 export async function readPcmSliceFromRaw(

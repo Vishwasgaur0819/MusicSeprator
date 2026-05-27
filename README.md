@@ -33,12 +33,15 @@ For iOS (macOS only):
 cd ios && pod install && cd ..
 ```
 
-### AI Model (required)
+### AI engine setup
 
-1. Download `htdemucs_ft_vocals.onnx` from [StemSplitio/htdemucs-ft-vocals-onnx](https://huggingface.co/StemSplitio/htdemucs-ft-vocals-onnx)
-2. In the app, tap **Install Model File** on the home screen and select the `.onnx` file
+The app now prepares the fp16 model automatically on first run:
 
-Or copy manually to the device cache path shown in the app.
+- Downloads `htdemucs_ft_vocals_fp16weights.onnx` to app cache
+- Shows progress in the Home/Processing UI
+- Retries failed downloads automatically
+
+Manual model install is kept only as an advanced fallback action.
 
 ## Run
 
@@ -63,7 +66,7 @@ npm run ios
    # Edit keystore.properties with your passwords
    ```
 
-   Without `keystore.properties`, the release build still works but is signed with the debug key (fine for local testing only).
+   `keystore.properties` is required for release builds.
 
 2. **Build the APK**:
 
@@ -81,7 +84,33 @@ npm run ios
 
    Output: `android/app/build/outputs/bundle/release/app-release.aab`
 
-Release builds bundle only **arm** CPU architectures (`armeabi-v7a`, `arm64-v8a`) to keep the APK smaller. The AI model is **not** included in the APK; users install it from the home screen after install.
+Release builds bundle only **arm** CPU architectures (`armeabi-v7a`, `arm64-v8a`) to keep the APK smaller. Models are downloaded on first run by default.
+
+## Hybrid fallback configuration
+
+Runtime switches live in `src/config/runtime.ts`:
+
+- `separationMode`: `on-device` | `hybrid` | `cloud`
+- `cloudApiBaseUrl`: set your backend base URL to enable cloud fallback
+- `cloudApiToken`: optional bearer token
+- `cloudTimeoutMs`, `cloudPollIntervalMs`: cloud retry behavior
+
+Cloud API contract expected by the app:
+
+- `POST /v1/separation/jobs` (multipart field: `file`) -> `{ "jobId": "..." }`
+- `GET /v1/separation/jobs/:jobId` -> 
+  - `{ "state": "queued" | "processing", "progress": 0..1 }`
+  - `{ "state": "completed", "stems": { "vocalsUrl": "...", "instrumentalUrl": "..." } }`
+  - `{ "state": "failed", "error": "..." }`
+
+## Telemetry and rollout controls
+
+- Separation telemetry is appended to `Caches/telemetry/separation-events.jsonl`
+- Events include preflight, on-device, and cloud fallback outcomes
+- Use `runtimeConfig.separationMode` as kill switch for staged rollout:
+  - Start with `on-device`
+  - Move to `hybrid` for partial rollout
+  - Switch to `cloud` if on-device instability spikes
 
 ## Project Structure
 
@@ -97,10 +126,11 @@ src/
 
 ## Privacy
 
-- All audio processing runs on your device
-- No uploads to any server
+- On-device mode keeps audio local
+- Hybrid/cloud mode uploads source audio only when fallback is used
 - Session temp files live in app cache and are deleted when you start over or leave the mixer
 - Exported files are saved via the OS share sheet to a location you choose
+- Add your own retention policy on cloud backend before production rollout
 
 ## Tech Stack
 

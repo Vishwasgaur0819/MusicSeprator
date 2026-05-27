@@ -6,12 +6,25 @@ export interface SessionPaths {
   vocalsAccum: string;
   vocalsWeight: string;
   vocals: string;
+  /** Original mix decoded to 44.1 kHz stereo PCM WAV. Used for live playback math. */
+  mix: string;
+  /** Legacy path kept for cloud download compatibility (not written by local pipeline). */
   instrumental: string;
+  /** Legacy path kept for older sessions; not used by current playback. */
+  instrumentalClean: string;
   fileName: string;
 }
 
 export interface SeparationProgress {
-  phase: 'decoding' | 'separating' | 'saving';
+  phase:
+    | 'preflight'
+    | 'downloading-model'
+    | 'decoding'
+    | 'separating'
+    | 'saving'
+    | 'uploading'
+    | 'processing-cloud'
+    | 'downloading-stems';
   current: number;
   total: number;
   message: string;

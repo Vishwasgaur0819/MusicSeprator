@@ -21,7 +21,7 @@ import {KEEP_SESSION_FILES_FOR_TESTING} from '../config/dev';
 type ProgressCallback = (progress: SeparationProgress) => void;
 
 /** Bump when separation pipeline changes — old stems must be re-processed. */
-export const SEPARATION_PIPELINE_VERSION = 3;
+export const SEPARATION_PIPELINE_VERSION = 5;
 
 const UI_YIELD_EVERY = 3;
 
@@ -47,11 +47,13 @@ export async function separateStems(
   }
 
   let totalFrames: number;
-  {
-    const mixPcm = await decodeAudioToPcm(paths.original);
-    totalFrames = Math.floor(mixPcm.length / CHANNELS);
-    await savePcmRawStreaming(mixPcm, paths.originalPcm);
-  }
+  let mixPcm: Float32Array | null = null;
+  mixPcm = await decodeAudioToPcm(paths.original);
+  totalFrames = Math.floor(mixPcm.length / CHANNELS);
+  await savePcmRawStreaming(mixPcm, paths.originalPcm);
+  // Drop decode buffer before loading ONNX session to reduce peak memory.
+  mixPcm = null;
+  await yieldToUi();
 
   const chunkCount = countAudioChunks(totalFrames);
   const estMinutes = Math.max(1, Math.ceil(chunkCount * 0.2));
@@ -140,12 +142,12 @@ export async function separateStems(
     message: 'Saving stems…',
   });
 
-  await exportStemsFromDisk(
+  const stemExportStats = await exportStemsFromDisk(
     paths.originalPcm,
     paths.vocalsAccum,
     paths.vocalsWeight,
     paths.vocals,
-    paths.instrumental,
+    paths.mix,
     totalFrames,
     (current, total) => {
       onProgress({
@@ -167,6 +169,11 @@ export async function separateStems(
         chunk0: chunk0Diagnostics,
         modelWorking:
           chunk0Diagnostics !== null && chunk0Diagnostics.vocalPeak > 0.001,
+        suppressionProfile: stemExportStats.suppressionProfile,
+        stemPeaks: {
+          vocals: stemExportStats.vocalsPeak,
+          mix: stemExportStats.mixPeak,
+        },
       },
       null,
       2,
