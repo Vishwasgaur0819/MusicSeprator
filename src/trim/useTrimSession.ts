@@ -27,7 +27,6 @@ export interface TrimSessionState {
   playheadSec: number;
   isPlaying: boolean;
   peaks: number[];
-  pcm: Float32Array | null;
   error: string | null;
 }
 
@@ -40,7 +39,6 @@ type TrimAction =
         startSec: number;
         endSec: number;
         peaks: number[];
-        pcm: Float32Array;
       };
     }
   | {type: 'LOAD_ERROR'; error: string}
@@ -62,7 +60,6 @@ const initialState: TrimSessionState = {
   playheadSec: 0,
   isPlaying: false,
   peaks: [],
-  pcm: null,
   error: null,
 };
 
@@ -82,7 +79,6 @@ function trimReducer(
         endSec: action.payload.endSec,
         playheadSec: action.payload.startSec,
         peaks: action.payload.peaks,
-        pcm: action.payload.pcm,
         error: null,
         isPlaying: false,
       };
@@ -153,7 +149,6 @@ export function useTrimSession(sessionId: string, fileName: string) {
           startSec: 0,
           endSec: decoded.durationSec,
           peaks: decoded.peaks,
-          pcm: decoded.pcm,
         },
       });
     } catch (error) {
@@ -247,7 +242,7 @@ export function useTrimSession(sessionId: string, fileName: string) {
   }, []);
 
   const applyTrim = useCallback(async () => {
-    if (!state.pcm) {
+    if (state.status !== 'ready' && state.status !== 'previewing') {
       throw new Error('Audio is not loaded.');
     }
 
@@ -265,7 +260,6 @@ export function useTrimSession(sessionId: string, fileName: string) {
         fileName,
         state.startSec,
         state.endSec,
-        state.pcm,
       );
     } catch (error) {
       dispatch({type: 'SET_STATUS', status: 'ready'});
@@ -277,9 +271,14 @@ export function useTrimSession(sessionId: string, fileName: string) {
     sessionId,
     state.durationSec,
     state.endSec,
-    state.pcm,
     state.startSec,
+    state.status,
   ]);
+
+  const prepareForProcessing = useCallback(async () => {
+    engineRef.current.pause();
+    await engineRef.current.destroy();
+  }, []);
 
   return useMemo(
     () => ({
@@ -300,10 +299,12 @@ export function useTrimSession(sessionId: string, fileName: string) {
         restartPreview,
         stopPreview,
         applyTrim,
+        prepareForProcessing,
       },
     }),
     [
       applyTrim,
+      prepareForProcessing,
       isFullSong,
       loadAudio,
       restartPreview,

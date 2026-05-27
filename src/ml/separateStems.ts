@@ -46,6 +46,8 @@ export async function separateStems(
     return;
   }
 
+  await cleanupStaleSeparationArtifacts(paths);
+
   let totalFrames: number;
   let mixPcm: Float32Array | null = null;
   mixPcm = await decodeAudioToPcm(paths.original);
@@ -183,6 +185,20 @@ export async function separateStems(
 
   if (!KEEP_SESSION_FILES_FOR_TESTING) {
     await cleanupTempFiles(paths);
+  }
+}
+
+async function cleanupStaleSeparationArtifacts(
+  paths: SessionPaths,
+): Promise<void> {
+  for (const filePath of [
+    paths.originalPcm,
+    paths.vocalsAccum,
+    paths.vocalsWeight,
+  ]) {
+    if (await RNFS.exists(filePath)) {
+      await RNFS.unlink(filePath);
+    }
   }
 }
 

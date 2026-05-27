@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import type {RootStackParamList} from '../types/navigation';
+import {appLabels} from '../copy/appLabels';
 import {colors} from '../theme/colors';
 import {typography} from '../theme/typography';
 
@@ -157,10 +158,8 @@ export function SplashScreen({navigation}: Props) {
 
       <Animated.Text
         style={[styles.flashText, styles.textOverlay, {opacity: flashOpacity}]}>
-        You can do it 😍
+        {appLabels.splash.tagline}
       </Animated.Text>
-
-      <Text style={styles.credit}>Made by Vishwas</Text>
     </View>
   );
 }
@@ -218,15 +217,5 @@ const styles = StyleSheet.create({
     right: 32,
     zIndex: 2,
     elevation: 2,
-  },
-  credit: {
-    ...typography.bodySmall,
-    position: 'absolute',
-    bottom: 48,
-    alignSelf: 'center',
-    color: colors.textMuted,
-    letterSpacing: 0.4,
-    zIndex: 3,
-    elevation: 3,
   },
 });

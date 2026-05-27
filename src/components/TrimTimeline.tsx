@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import {formatTime, MIN_CROP_SEC} from '../audio/cropAudio';
+import {appLabels} from '../copy/appLabels';
 import {colors} from '../theme/colors';
 import {radii, shadows, spacing} from '../theme/layout';
 import {typography} from '../theme/typography';
@@ -304,7 +305,9 @@ export function TrimTimeline({
         <View style={styles.playbackMeta}>
           <Text style={styles.playbackTime}>{formatTime(playheadSec)}</Text>
           <Text style={styles.playbackHint}>
-            {isPlaying ? 'Previewing selection' : 'Play previews IN to OUT'}
+            {isPlaying
+              ? appLabels.trim.previewHintPlaying
+              : appLabels.trim.previewHintIdle}
           </Text>
           <Text style={styles.playbackTime}>{formatTime(durationSec)}</Text>
         </View>

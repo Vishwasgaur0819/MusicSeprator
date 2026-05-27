@@ -65,41 +65,68 @@ export class StemPlayer {
     this.applyGains();
   }
 
-  private applyGains(): void {
-    if (!this.vocalsGain || !this.musicGain) {
+  private applyGains(atTime?: number): void {
+    if (!this.vocalsGain || !this.musicGain || !this.context) {
       return;
     }
-    this.musicGain.gain.value = getMusicGain(
-      this.vocalGainValue,
-      this.musicGainValue,
-    );
-    this.vocalsGain.gain.value = getVocalNetGain(
-      this.vocalGainValue,
-      this.musicGainValue,
-    );
+
+    const music = getMusicGain(this.vocalGainValue, this.musicGainValue);
+    const vocal = getVocalNetGain(this.vocalGainValue, this.musicGainValue);
+    const when = atTime ?? this.context.currentTime;
+
+    this.musicGain.gain.setValueAtTime(music, when);
+    this.vocalsGain.gain.setValueAtTime(vocal, when);
   }
 
-  play(): void {
+  private async ensureContextRunning(): Promise<void> {
+    if (!this.context) {
+      return;
+    }
+
+    try {
+      if (this.context.state === 'suspended') {
+        await this.context.resume();
+        return;
+      }
+    } catch {
+      // fall through
+    }
+
+    try {
+      await this.context.resume();
+    } catch {
+      // already running
+    }
+  }
+
+  async play(): Promise<void> {
     if (!this.context || !this.mixBuffer || !this.vocalsBuffer) {
       return;
     }
 
+    await this.ensureContextRunning();
+
     this.stopSources();
-    this.applyGains();
 
     const offset = this.isPaused ? this.pausedAt : 0;
+    // Schedule both buses on the same clock tick. Music Only relies on
+    // sample-aligned phase cancellation between mix and vocals.
+    const when = this.context.currentTime + 0.01;
+
+    this.applyGains(when);
 
     this.musicSource = this.context.createBufferSource();
     this.musicSource.buffer = this.mixBuffer;
     this.musicSource.connect(this.musicGain!);
-    this.musicSource.start(0, offset);
 
     this.vocalsSource = this.context.createBufferSource();
     this.vocalsSource.buffer = this.vocalsBuffer;
     this.vocalsSource.connect(this.vocalsGain!);
-    this.vocalsSource.start(0, offset);
 
-    this.startedAt = this.context.currentTime - offset;
+    this.musicSource.start(when, offset);
+    this.vocalsSource.start(when, offset);
+
+    this.startedAt = when - offset;
     this.isPlaying = true;
     this.isPaused = false;
   }
@@ -128,12 +155,12 @@ export class StemPlayer {
   }
 
   /** Rewind and immediately start playing from the beginning. */
-  restart(): void {
+  async restart(): Promise<void> {
     if (!this.context || !this.mixBuffer || !this.vocalsBuffer) {
       return;
     }
     this.rewindToStart();
-    this.play();
+    await this.play();
   }
 
   async stop(): Promise<void> {

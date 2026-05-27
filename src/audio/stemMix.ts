@@ -13,7 +13,7 @@
  *   - Music Only (vocalGain=0, musicGain=1)  → mix - vocals
  *   - Vocals Only (vocalGain=1, musicGain=0) → vocals
  *   - Both Full  (vocalGain=1, musicGain=1)  → mix
- *   - Low Vocal  (vocalGain=0.4, musicGain=1) → mix - 0.6 * vocals
+ *   - Custom     (any other slider blend)    → live reconstruction
  */
 
 /**

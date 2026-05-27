@@ -13,6 +13,7 @@ interface StemSliderProps {
   onValueChange: (value: number) => void;
   color?: string;
   icon?: string;
+  disabled?: boolean;
 }
 
 export function StemSlider({
@@ -22,21 +23,41 @@ export function StemSlider({
   onValueChange,
   color = colors.primary,
   icon = 'tune-vertical',
+  disabled = false,
 }: StemSliderProps) {
   const displayValue =
     value === 0 ? 'Muted' : `${Math.round(value * 100)}%`;
   const isMuted = value === 0;
 
+  const handleChange = (next: number) => {
+    if (disabled) {
+      return;
+    }
+    onValueChange(next);
+  };
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, disabled && styles.containerDisabled]}>
       <View style={styles.topRow}>
         <View style={[styles.iconWrap, {backgroundColor: `${color}18`}]}>
-          <MaterialCommunityIcons name={icon} size={20} color={color} />
+          <MaterialCommunityIcons
+            name={icon}
+            size={20}
+            color={disabled ? colors.textMuted : color}
+          />
         </View>
         <View style={styles.labelBlock}>
-          <Text style={styles.label}>{label}</Text>
+          <Text style={[styles.label, disabled && styles.labelDisabled]}>
+            {label}
+          </Text>
           {description ? (
-            <Text style={styles.description}>{description}</Text>
+            <Text
+              style={[
+                styles.description,
+                disabled && styles.descriptionDisabled,
+              ]}>
+              {description}
+            </Text>
           ) : null}
         </View>
         <View style={[styles.valuePill, isMuted && styles.valuePillMuted]}>
@@ -46,7 +67,7 @@ export function StemSlider({
         </View>
       </View>
 
-      <View style={styles.trackShell}>
+      <View style={[styles.trackShell, disabled && styles.trackShellDisabled]}>
         <View
           style={[
             styles.trackFill,
@@ -54,14 +75,16 @@ export function StemSlider({
               width: `${Math.max(value * 100, 0)}%`,
               backgroundColor: color,
             },
+            disabled && styles.trackFillDisabled,
           ]}
         />
         <Slider
           value={value}
-          onValueChange={onValueChange}
+          onValueChange={handleChange}
           minimumValue={0}
           maximumValue={1}
           step={0.01}
+          disabled={disabled}
           thumbTintColor={colors.white}
           minimumTrackTintColor="transparent"
           maximumTrackTintColor="transparent"
@@ -75,6 +98,9 @@ export function StemSlider({
 const styles = StyleSheet.create({
   container: {
     marginBottom: spacing.lg,
+  },
+  containerDisabled: {
+    opacity: 0.55,
   },
   topRow: {
     flexDirection: 'row',
@@ -96,9 +122,15 @@ const styles = StyleSheet.create({
     ...typography.headline,
     fontSize: 16,
   },
+  labelDisabled: {
+    color: colors.textMuted,
+  },
   description: {
     ...typography.bodySmall,
     marginTop: 2,
+  },
+  descriptionDisabled: {
+    color: colors.textMuted,
   },
   valuePill: {
     backgroundColor: colors.surfaceHighlight,
@@ -128,6 +160,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  trackShellDisabled: {
+    backgroundColor: colors.surfaceRaised,
+  },
   trackFill: {
     position: 'absolute',
     left: 0,
@@ -135,6 +170,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     opacity: 0.35,
     borderRadius: radii.pill,
+  },
+  trackFillDisabled: {
+    opacity: 0.2,
   },
   slider: {
     width: '100%',

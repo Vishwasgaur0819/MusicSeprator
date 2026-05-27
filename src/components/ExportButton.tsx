@@ -3,6 +3,7 @@ import {Alert, StyleSheet, Text, View} from 'react-native';
 import {Menu} from 'react-native-paper';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import type {ExportFormat} from '../audio/exportMix';
+import {appLabels} from '../copy/appLabels';
 import {AppButton} from './ui/AppButton';
 import {Card} from './ui/Card';
 import {colors} from '../theme/colors';
@@ -25,7 +26,7 @@ export function ExportButton({onExport, disabled}: ExportButtonProps) {
       await onExport(format);
     } catch (error) {
       Alert.alert(
-        'Export failed',
+        appLabels.export.failedTitle,
         error instanceof Error ? error.message : 'Unknown error',
       );
     } finally {
@@ -42,10 +43,8 @@ export function ExportButton({onExport, disabled}: ExportButtonProps) {
           color={colors.accent}
         />
         <View style={styles.headerText}>
-          <Text style={styles.title}>Export your mix</Text>
-          <Text style={styles.subtitle}>
-            Slider levels are baked into the exported file
-          </Text>
+          <Text style={styles.title}>{appLabels.export.title}</Text>
+          <Text style={styles.subtitle}>{appLabels.export.subtitle}</Text>
         </View>
       </View>
 
@@ -55,7 +54,9 @@ export function ExportButton({onExport, disabled}: ExportButtonProps) {
         contentStyle={styles.menu}
         anchor={
           <AppButton
-            label={exporting ? 'Exporting…' : 'Export Mix'}
+            label={
+              exporting ? appLabels.export.exporting : appLabels.export.button
+            }
             onPress={() => setVisible(true)}
             variant="primary"
             loading={exporting}
@@ -74,12 +75,12 @@ export function ExportButton({onExport, disabled}: ExportButtonProps) {
         }>
         <Menu.Item
           onPress={() => handleExport('wav')}
-          title="Export as WAV"
+          title={appLabels.export.asWav}
           leadingIcon="waveform"
         />
         <Menu.Item
           onPress={() => handleExport('m4a')}
-          title="Export as M4A (WAV fallback)"
+          title={`${appLabels.export.asM4a} (${appLabels.export.asM4aHint})`}
           leadingIcon="music-box-outline"
         />
       </Menu>

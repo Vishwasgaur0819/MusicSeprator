@@ -1,6 +1,6 @@
 import RNFS from 'react-native-fs';
 import type {CropMeta, SessionMeta, SessionPaths} from '../types/session';
-import {saveCroppedPcm} from '../audio/cropAudio';
+import {cropAudioFile} from '../audio/cropAudio';
 import {KEEP_SESSION_FILES_FOR_TESTING} from '../config/dev';
 
 function generateSessionId(): string {
@@ -127,13 +127,12 @@ export async function applyCropToSession(
   fileName: string,
   startSec: number,
   endSec: number,
-  pcm: Float32Array,
 ): Promise<SessionPaths> {
   const paths = getSessionPaths(sessionId, fileName);
   const croppedPath = `${paths.dir}/original.cropped.wav`;
   const previousOriginal = paths.original;
 
-  await saveCroppedPcm(pcm, startSec, endSec, croppedPath);
+  await cropAudioFile(previousOriginal, croppedPath, startSec, endSec);
 
   if (
     previousOriginal !== croppedPath &&

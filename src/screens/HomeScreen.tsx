@@ -21,6 +21,7 @@ import {KEEP_SESSION_FILES_FOR_TESTING} from '../config/dev';
 import {AppButton} from '../components/ui/AppButton';
 import {Badge, Card, IconCircle, SectionHeader} from '../components/ui/Card';
 import {Screen} from '../components/ui/Screen';
+import {appLabels} from '../copy/appLabels';
 import {colors} from '../theme/colors';
 import {radii, spacing} from '../theme/layout';
 import {typography} from '../theme/typography';
@@ -30,20 +31,20 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 const USE_CASES = [
   {
     icon: 'music-note-off',
-    title: 'Music only',
-    detail: 'Mute vocals, export a clean instrumental',
+    title: appLabels.home.useCases.instrumental.title,
+    detail: appLabels.home.useCases.instrumental.detail,
     color: colors.music,
   },
   {
     icon: 'microphone-variant',
-    title: 'Vocals only',
-    detail: 'Isolate the singer, remove instruments',
+    title: appLabels.home.useCases.vocalsOnly.title,
+    detail: appLabels.home.useCases.vocalsOnly.detail,
     color: colors.vocal,
   },
   {
-    icon: 'microphone-minus',
-    title: 'Karaoke mode',
-    detail: 'Full music with vocals dialed down to 5–15%',
+    icon: 'tune-vertical',
+    title: appLabels.home.useCases.customMix.title,
+    detail: appLabels.home.useCases.customMix.detail,
     color: colors.accent,
   },
 ] as const;
@@ -224,12 +225,9 @@ export function HomeScreen({navigation}: Props) {
           }
           size={64}
         />
-        <Text style={styles.brand}>StemSplit</Text>
-        <Text style={styles.title}>Vocal & Music Mixer</Text>
-        <Text style={styles.subtitle}>
-          Upload any song and split the singer's voice from the music. Mix
-          independently, preview live, and export your blend.
-        </Text>
+        <Text style={styles.brand}>{appLabels.home.brand}</Text>
+        <Text style={styles.title}>{appLabels.home.title}</Text>
+        <Text style={styles.subtitle}>{appLabels.home.subtitle}</Text>
       </View>
 
       <View style={styles.stepsRow}>
@@ -253,14 +251,12 @@ export function HomeScreen({navigation}: Props) {
 
       <Card elevated accent={colors.primary}>
         <SectionHeader
-          title="Upload"
-          subtitle="Choose a song to separate"
+          title={appLabels.home.uploadTitle}
+          subtitle={appLabels.home.uploadSubtitle}
         />
-        <Text style={styles.cardText}>
-          Supports MP3, M4A, WAV, FLAC and other common formats.
-        </Text>
+        <Text style={styles.cardText}>{appLabels.home.uploadFormats}</Text>
         <AppButton
-          label="Choose Audio File"
+          label={appLabels.home.chooseAudioFile}
           onPress={handleUpload}
           loading={loading}
           disabled={!modelReady || loading}
@@ -407,10 +403,7 @@ export function HomeScreen({navigation}: Props) {
           </>
         ) : (
           <>
-            <Text style={styles.cardText}>
-              We automatically prepare the AI engine on first run. This keeps
-              setup simple like production karaoke apps.
-            </Text>
+            <Text style={styles.cardText}>{appLabels.home.modelAutoSetup}</Text>
             <Text style={styles.modelHint}>
               {modelReadiness.message}
               {modelProgress && modelProgress.total > 0
@@ -437,7 +430,7 @@ export function HomeScreen({navigation}: Props) {
       </Card>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Made by Vishwas</Text>
+        <Text style={styles.footerText}>{appLabels.home.footerCredit}</Text>
       </View>
     </Screen>
   );

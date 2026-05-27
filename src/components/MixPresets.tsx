@@ -2,81 +2,60 @@ import React from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import {colors} from '../theme/colors';
+import {appLabels} from '../copy/appLabels';
 import {radii, shadows, spacing} from '../theme/layout';
 import {typography} from '../theme/typography';
 
+export type MixMode = 'music-only' | 'custom' | 'vocals-only';
+
 export interface MixPreset {
-  id: string;
+  id: MixMode;
   label: string;
-  vocalGain: number;
-  musicGain: number;
   icon: string;
   description: string;
 }
 
 /**
- * The three primary mix modes. Sliders below act as fine-tune controls.
+ * Quick mix modes. Fine-tune sliders are enabled only in Custom mode.
  * - Music Only:  vocalGain=0, musicGain=1  → live `mix - vocals`
- * - Low Vocal:   vocalGain=0.4, musicGain=1 → live `mix - 0.6 * vocals`
- * - Vocals Only: vocalGain=1, musicGain=0  → live `vocals`
+ * - Custom:      user-adjustable blend (starts at 100% / 100%)
+ * - Vocals Only: vocalGain=1, musicGain=0  → vocals
  */
 export const MIX_PRESETS: MixPreset[] = [
   {
     id: 'music-only',
     label: 'Music Only',
-    vocalGain: 0,
-    musicGain: 1,
     icon: 'music-circle-outline',
-    description: 'Karaoke',
-  },
-  {
-    id: 'low-vocal',
-    label: 'Low Vocal',
-    vocalGain: 0.4,
-    musicGain: 1,
-    icon: 'microphone-minus',
-    description: '40% vocals',
+    description: appLabels.presets.musicOnlyDescription,
   },
   {
     id: 'vocals-only',
     label: 'Vocals Only',
-    vocalGain: 1,
-    musicGain: 0,
     icon: 'microphone-variant',
-    description: 'A cappella',
+    description: appLabels.presets.vocalsOnlyDescription,
+  },
+  {
+    id: 'custom',
+    label: 'Custom',
+    icon: 'tune-vertical',
+    description: appLabels.presets.customDescription,
   },
 ];
 
 interface MixPresetsProps {
-  vocalGain: number;
-  musicGain: number;
-  onSelect: (vocalGain: number, musicGain: number) => void;
+  activePresetId: MixMode;
+  onSelect: (presetId: MixMode) => void;
 }
 
-function isPresetActive(
-  preset: MixPreset,
-  vocalGain: number,
-  musicGain: number,
-): boolean {
-  return (
-    Math.abs(preset.vocalGain - vocalGain) < 0.005 &&
-    Math.abs(preset.musicGain - musicGain) < 0.005
-  );
-}
-
-export function MixPresets({
-  vocalGain,
-  musicGain,
-  onSelect,
-}: MixPresetsProps) {
+export function MixPresets({activePresetId, onSelect}: MixPresetsProps) {
   return (
     <View style={styles.row}>
       {MIX_PRESETS.map(preset => {
-        const active = isPresetActive(preset, vocalGain, musicGain);
+        const active = activePresetId === preset.id;
         return (
           <Pressable
             key={preset.id}
-            onPress={() => onSelect(preset.vocalGain, preset.musicGain)}
+            onPress={() => onSelect(preset.id)}
             style={({pressed}) => [
               styles.tile,
               active && styles.tileActive,

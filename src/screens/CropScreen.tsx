@@ -18,6 +18,7 @@ import {AppButton} from '../components/ui/AppButton';
 import {Screen} from '../components/ui/Screen';
 import {destroySession} from '../storage/sessionManager';
 import {useTrimSession} from '../trim/useTrimSession';
+import {appLabels} from '../copy/appLabels';
 import {colors} from '../theme/colors';
 import {radii, shadows, spacing} from '../theme/layout';
 import {typography} from '../theme/typography';
@@ -44,10 +45,13 @@ export function CropScreen({navigation, route}: Props) {
         }
 
         e.preventDefault();
-        Alert.alert('Discard upload?', 'Your uploaded file will be deleted.', [
-          {text: 'Keep editing', style: 'cancel'},
+        Alert.alert(
+          appLabels.trim.discardTitle,
+          appLabels.trim.discardMessage,
+          [
+          {text: appLabels.trim.keepTrimming, style: 'cancel'},
           {
-            text: 'Discard',
+            text: appLabels.trim.discard,
             style: 'destructive',
             onPress: async () => {
               actions.stopPreview();
@@ -62,14 +66,15 @@ export function CropScreen({navigation, route}: Props) {
     }, [actions, applying, navigation, sessionId]),
   );
 
-  const goToProcessing = () => {
+  const goToProcessing = async () => {
+    await actions.prepareForProcessing();
     navigation.replace('Processing', {sessionId, fileName});
   };
 
   const handleContinue = async () => {
     try {
       await actions.applyTrim();
-      goToProcessing();
+      await goToProcessing();
     } catch (error) {
       Alert.alert(
         'Could not continue',
@@ -78,9 +83,9 @@ export function CropScreen({navigation, route}: Props) {
     }
   };
 
-  const handleUseFullSong = () => {
+  const handleUseFullSong = async () => {
     actions.stopPreview();
-    goToProcessing();
+    await goToProcessing();
   };
 
   const continueLabel = derived.isFullSong
@@ -95,10 +100,8 @@ export function CropScreen({navigation, route}: Props) {
           <View style={styles.skeletonControls} />
         </View>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingTitle}>Opening trim studio</Text>
-        <Text style={styles.loadingText}>
-          Decoding audio and building timeline…
-        </Text>
+        <Text style={styles.loadingTitle}>{appLabels.trim.loadingTitle}</Text>
+        <Text style={styles.loadingText}>{appLabels.trim.loadingText}</Text>
       </Screen>
     );
   }
@@ -170,7 +173,7 @@ export function CropScreen({navigation, route}: Props) {
                 size={16}
                 color={colors.accent}
               />
-              <Text style={styles.quickActionText}>Full</Text>
+              <Text style={styles.quickActionText}>{appLabels.trim.fullTrack}</Text>
             </Pressable>
           ) : null}
         </View>

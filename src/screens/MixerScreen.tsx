@@ -10,7 +10,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import type {RootStackParamList} from '../types/navigation';
 import {StemSlider} from '../components/StemSlider';
-import {MixPresets} from '../components/MixPresets';
+import {MixPresets, type MixMode} from '../components/MixPresets';
 import {ExportButton} from '../components/ExportButton';
 import {AppButton} from '../components/ui/AppButton';
 import {Card, SectionHeader} from '../components/ui/Card';
@@ -26,6 +26,7 @@ import {
   getSessionPaths,
 } from '../storage/sessionManager';
 import {KEEP_SESSION_FILES_FOR_TESTING} from '../config/dev';
+import {describeMixHint, appLabels} from '../copy/appLabels';
 import {colors} from '../theme/colors';
 import {radii, shadows, spacing} from '../theme/layout';
 import {typography} from '../theme/typography';
@@ -39,19 +40,7 @@ function formatTime(seconds: number): string {
 }
 
 function describeMix(vocalGain: number, musicGain: number): string {
-  if (vocalGain <= 0.005 && musicGain > 0) {
-    return 'Music only — vocals are removed from the original mix in real time.';
-  }
-  if (musicGain <= 0.005 && vocalGain > 0) {
-    return 'Singer voice only — no music in export.';
-  }
-  if (vocalGain > 0 && vocalGain <= 0.5 && musicGain >= 0.9) {
-    return 'Mostly music with soft vocals on top — great for sing-along.';
-  }
-  if (vocalGain >= 0.95 && musicGain >= 0.95) {
-    return 'Original full mix — same as the source track.';
-  }
-  return 'Custom blend — export matches what you hear while playing.';
+  return describeMixHint(vocalGain, musicGain);
 }
 
 export function MixerScreen({navigation, route}: Props) {
@@ -59,6 +48,8 @@ export function MixerScreen({navigation, route}: Props) {
   const paths = getSessionPaths(sessionId, fileName);
   const [vocalGain, setVocalGain] = useState(1);
   const [musicGain, setMusicGain] = useState(1);
+  const [mixMode, setMixMode] = useState<MixMode>('custom');
+  const slidersLocked = mixMode !== 'custom';
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -87,7 +78,7 @@ export function MixerScreen({navigation, route}: Props) {
       })
       .catch(error => {
         Alert.alert(
-          'Playback error',
+          appLabels.mixer.playbackErrorTitle,
           error instanceof Error ? error.message : 'Could not load stems',
         );
       });
@@ -109,14 +100,64 @@ export function MixerScreen({navigation, route}: Props) {
     stemPlayer.setMusicGain(musicGain);
   }, [musicGain]);
 
-  const applyPreset = useCallback((vocal: number, music: number) => {
-    setVocalGain(vocal);
-    setMusicGain(music);
-    if (ready) {
+  const syncPlayerGains = useCallback(() => {
+    stemPlayer.setVocalGain(vocalGainRef.current);
+    stemPlayer.setMusicGain(musicGainRef.current);
+  }, []);
+
+  const applyGains = useCallback(
+    async (vocal: number, music: number) => {
+      setVocalGain(vocal);
+      setMusicGain(music);
       stemPlayer.setVocalGain(vocal);
       stemPlayer.setMusicGain(music);
-    }
-  }, [ready]);
+
+      if (stemPlayer.playing) {
+        stemPlayer.pause();
+        stemPlayer.setVocalGain(vocal);
+        stemPlayer.setMusicGain(music);
+        await stemPlayer.play();
+      }
+    },
+    [],
+  );
+
+  const applyPreset = useCallback(
+    async (presetId: MixMode) => {
+      setMixMode(presetId);
+
+      if (presetId === 'music-only') {
+        await applyGains(0, 1);
+        return;
+      }
+      if (presetId === 'vocals-only') {
+        await applyGains(1, 0);
+        return;
+      }
+      await applyGains(1, 1);
+    },
+    [applyGains],
+  );
+
+  const handleVocalChange = useCallback(
+    (value: number) => {
+      if (slidersLocked) {
+        return;
+      }
+      setVocalGain(value);
+    },
+    [slidersLocked],
+  );
+
+  const handleMusicChange = useCallback(
+    (value: number) => {
+      if (slidersLocked) {
+        return;
+      }
+      setMusicGain(value);
+    },
+    [slidersLocked],
+  );
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) {
@@ -143,7 +184,7 @@ export function MixerScreen({navigation, route}: Props) {
     }, 250);
   }, [stopTimer]);
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     if (!ready) {
       return;
     }
@@ -152,17 +193,19 @@ export function MixerScreen({navigation, route}: Props) {
       setPlaying(false);
       stopTimer();
     } else {
-      stemPlayer.play();
+      syncPlayerGains();
+      await stemPlayer.play();
       setPlaying(true);
       startTimer();
     }
   };
 
-  const handleRestart = () => {
+  const handleRestart = async () => {
     if (!ready) {
       return;
     }
-    stemPlayer.restart();
+    syncPlayerGains();
+    await stemPlayer.restart();
     setCurrentTime(0);
     setPlaying(true);
     startTimer();
@@ -171,8 +214,8 @@ export function MixerScreen({navigation, route}: Props) {
   const handleExport = async (format: ExportFormat) => {
     if (vocalGain === 0 && musicGain === 0) {
       Alert.alert(
-        'Nothing to export',
-        'Move at least one slider above 0% — vocals, music, or both.',
+        appLabels.mixer.exportNothingTitle,
+        appLabels.mixer.exportNothingMessage,
       );
       return;
     }
@@ -186,7 +229,10 @@ export function MixerScreen({navigation, route}: Props) {
       format,
     });
     await shareExportedFile(filePath);
-    Alert.alert('Export ready', 'Your mixed file is ready to save or share.');
+    Alert.alert(
+      appLabels.mixer.exportReadyTitle,
+      appLabels.mixer.exportReadyMessage,
+    );
   };
 
   const handleStartOver = () => {
@@ -218,12 +264,12 @@ export function MixerScreen({navigation, route}: Props) {
         }
         e.preventDefault();
         Alert.alert(
-          'Leave mixer?',
-          'Session files will be deleted from app cache.',
+          appLabels.mixer.leaveTitle,
+          appLabels.mixer.leaveMessage,
           [
-            {text: 'Stay', style: 'cancel'},
+            {text: appLabels.mixer.stay, style: 'cancel'},
             {
-              text: 'Leave',
+              text: appLabels.mixer.leave,
               style: 'destructive',
               onPress: async () => {
                 await stemPlayer.stop();
@@ -260,7 +306,7 @@ export function MixerScreen({navigation, route}: Props) {
                 size={14}
                 color={colors.accent}
               />
-              <Text style={styles.playingText}>Playing</Text>
+              <Text style={styles.playingText}>{appLabels.mixer.playing}</Text>
             </View>
           ) : null}
         </View>
@@ -268,7 +314,7 @@ export function MixerScreen({navigation, route}: Props) {
         <Text style={styles.fileName} numberOfLines={2}>
           {fileName}
         </Text>
-        <Text style={styles.fileMeta}>Separated stems ready to mix</Text>
+        <Text style={styles.fileMeta}>{appLabels.mixer.stemsReady}</Text>
 
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, {width: `${progress * 100}%`}]} />
@@ -319,34 +365,36 @@ export function MixerScreen({navigation, route}: Props) {
 
       <Card style={styles.presetCard} elevated>
         <SectionHeader
-          title="Quick modes"
-          subtitle="Tap a mode to switch the mix instantly"
+          title={appLabels.mixer.presetsTitle}
+          subtitle={appLabels.mixer.presetsSubtitle}
         />
-        <MixPresets
-          vocalGain={vocalGain}
-          musicGain={musicGain}
-          onSelect={applyPreset}
-        />
+        <MixPresets activePresetId={mixMode} onSelect={applyPreset} />
       </Card>
 
       <Card style={styles.slidersCard}>
         <SectionHeader
-          title="Fine tune"
-          subtitle="Adjust each stem precisely"
+          title={appLabels.mixer.levelsTitle}
+          subtitle={
+            slidersLocked
+              ? appLabels.mixer.levelsLockedSubtitle
+              : appLabels.mixer.levelsSubtitle
+          }
         />
         <StemSlider
-          label="Singer's voice"
-          description="Artist vocals (e.g. Arijit Singh)"
+          label={appLabels.mixer.vocalLabel}
+          description={appLabels.mixer.vocalDescription}
           value={vocalGain}
-          onValueChange={setVocalGain}
+          onValueChange={handleVocalChange}
+          disabled={slidersLocked}
           color={colors.vocal}
           icon="microphone-variant"
         />
         <StemSlider
-          label="Music & tuning"
-          description="Instruments, beats, backing track"
+          label={appLabels.mixer.musicLabel}
+          description={appLabels.mixer.musicDescription}
           value={musicGain}
-          onValueChange={setMusicGain}
+          onValueChange={handleMusicChange}
+          disabled={slidersLocked}
           color={colors.music}
           icon="music-circle-outline"
         />
@@ -364,7 +412,7 @@ export function MixerScreen({navigation, route}: Props) {
       <ExportButton onExport={handleExport} disabled={!ready} />
 
       <AppButton
-        label="Start Over"
+        label={appLabels.mixer.startOver}
         onPress={handleStartOver}
         variant="ghost"
         fullWidth={false}

@@ -8,6 +8,7 @@ import {ProcessingScreen} from '../screens/ProcessingScreen';
 import {MixerScreen} from '../screens/MixerScreen';
 import {CropScreen} from '../screens/CropScreen';
 import {SplashScreen} from '../screens/SplashScreen';
+import {appLabels} from '../copy/appLabels';
 import {colors} from '../theme/colors';
 import {typography} from '../theme/typography';
 
@@ -64,14 +65,14 @@ export function AppNavigator() {
           name="Processing"
           component={ProcessingScreen}
           options={{
-            title: 'Processing',
+            title: appLabels.navigation.processing,
             headerBackVisible: false,
           }}
         />
         <Stack.Screen
           name="Mixer"
           component={MixerScreen}
-          options={{title: 'Mix Studio'}}
+          options={{title: appLabels.navigation.mixer}}
         />
       </Stack.Navigator>
     </NavigationContainer>
