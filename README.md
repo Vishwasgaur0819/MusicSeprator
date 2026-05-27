@@ -53,6 +53,36 @@ npm run android
 npm run ios
 ```
 
+## Release APK (Android)
+
+1. **Release keystore** (one-time; keep backups of the keystore and passwords):
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts/generate-release-keystore.ps1
+   copy android\keystore.properties.example android\keystore.properties
+   # Edit keystore.properties with your passwords
+   ```
+
+   Without `keystore.properties`, the release build still works but is signed with the debug key (fine for local testing only).
+
+2. **Build the APK**:
+
+   ```bash
+   npm run android:release
+   ```
+
+   Output: `android/app/build/outputs/apk/release/app-release.apk`
+
+3. **Play Store (AAB)**:
+
+   ```bash
+   npm run android:bundle
+   ```
+
+   Output: `android/app/build/outputs/bundle/release/app-release.aab`
+
+Release builds bundle only **arm** CPU architectures (`armeabi-v7a`, `arm64-v8a`) to keep the APK smaller. The AI model is **not** included in the APK; users install it from the home screen after install.
+
 ## Project Structure
 
 ```
