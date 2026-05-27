@@ -6,6 +6,8 @@ import type {RootStackParamList} from '../types/navigation';
 import {HomeScreen} from '../screens/HomeScreen';
 import {ProcessingScreen} from '../screens/ProcessingScreen';
 import {MixerScreen} from '../screens/MixerScreen';
+import {CropScreen} from '../screens/CropScreen';
+import {SplashScreen} from '../screens/SplashScreen';
 import {colors} from '../theme/colors';
 import {typography} from '../theme/typography';
 
@@ -27,6 +29,7 @@ export function AppNavigator() {
   return (
     <NavigationContainer theme={theme}>
       <Stack.Navigator
+        initialRouteName="Splash"
         screenOptions={{
           headerStyle: {
             backgroundColor: colors.backgroundElevated,
@@ -41,9 +44,21 @@ export function AppNavigator() {
           animation: Platform.OS === 'android' ? 'fade_from_bottom' : 'default',
         }}>
         <Stack.Screen
+          name="Splash"
+          component={SplashScreen}
+          options={{headerShown: false, animation: 'fade'}}
+        />
+        <Stack.Screen
           name="Home"
           component={HomeScreen}
           options={{headerShown: false}}
+        />
+        <Stack.Screen
+          name="Crop"
+          component={CropScreen}
+          options={{
+            headerShown: false,
+          }}
         />
         <Stack.Screen
           name="Processing"

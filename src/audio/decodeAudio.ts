@@ -9,7 +9,7 @@ function toFileUri(path: string): string {
 }
 
 /** Extract interleaved stereo Float32 PCM from an AudioBuffer. */
-function audioBufferToPcm(
+export function audioBufferToPcm(
   buffer: Awaited<ReturnType<typeof decodeAudioData>>,
 ): Float32Array {
   const channels = Math.min(buffer.numberOfChannels, CHANNELS);
@@ -62,8 +62,22 @@ function resamplePcm(
  * Decode any supported audio file to interleaved Float32 PCM at 44.1kHz stereo.
  */
 export async function decodeAudioToPcm(inputPath: string): Promise<Float32Array> {
+  const {pcm} = await decodeAudioFile(inputPath);
+  return pcm;
+}
+
+export async function decodeAudioFile(inputPath: string): Promise<{
+  buffer: Awaited<ReturnType<typeof decodeAudioData>>;
+  pcm: Float32Array;
+  durationSec: number;
+}> {
   const buffer = await decodeAudioData(toFileUri(inputPath));
-  return audioBufferToPcm(buffer);
+  const pcm = audioBufferToPcm(buffer);
+  return {
+    buffer,
+    pcm,
+    durationSec: pcm.length / CHANNELS / SAMPLE_RATE,
+  };
 }
 
 export async function savePcmAsWav(

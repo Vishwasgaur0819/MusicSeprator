@@ -7,7 +7,7 @@ import {ProcessingProgress} from '../components/ProcessingProgress';
 import {Screen} from '../components/ui/Screen';
 import {
   destroySession,
-  getSessionPaths,
+  resolveSessionPaths,
 } from '../storage/sessionManager';
 import {separateStemsWithFallback} from '../ml/fallbackOrchestrator';
 
@@ -24,34 +24,44 @@ export function ProcessingScreen({navigation, route}: Props) {
   });
 
   useEffect(() => {
-    const paths = getSessionPaths(sessionId, fileName);
+    let cancelled = false;
 
-    separateStemsWithFallback(paths, setProgress, cancelRef.current)
-      .then(() => {
-        if (!cancelRef.current.cancelled) {
-          navigation.replace('Mixer', {sessionId, fileName});
-        }
-      })
-      .catch(error => {
-        if (cancelRef.current.cancelled) {
-          return;
-        }
-        Alert.alert(
-          'Processing failed',
-          error instanceof Error ? error.message : 'Unknown error',
-          [
-            {
-              text: 'Go back',
-              onPress: () => {
-                destroySession(sessionId);
-                navigation.popToTop();
+    async function runProcessing() {
+      const paths = await resolveSessionPaths(sessionId, fileName);
+      if (cancelled) {
+        return;
+      }
+
+      separateStemsWithFallback(paths, setProgress, cancelRef.current)
+        .then(() => {
+          if (!cancelRef.current.cancelled) {
+            navigation.replace('Mixer', {sessionId, fileName});
+          }
+        })
+        .catch(error => {
+          if (cancelRef.current.cancelled) {
+            return;
+          }
+          Alert.alert(
+            'Processing failed',
+            error instanceof Error ? error.message : 'Unknown error',
+            [
+              {
+                text: 'Go back',
+                onPress: () => {
+                  destroySession(sessionId);
+                  navigation.popToTop();
+                },
               },
-            },
-          ],
-        );
-      });
+            ],
+          );
+        });
+    }
+
+    runProcessing();
 
     return () => {
+      cancelled = true;
       cancelRef.current.cancelled = true;
     };
   }, [sessionId, fileName, navigation]);

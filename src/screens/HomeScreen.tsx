@@ -50,8 +50,9 @@ const USE_CASES = [
 
 const STEPS = [
   {num: '1', label: 'Upload', icon: 'upload'},
-  {num: '2', label: 'Separate', icon: 'brain'},
-  {num: '3', label: 'Mix & export', icon: 'tune-vertical'},
+  {num: '2', label: 'Trim', icon: 'content-cut'},
+  {num: '3', label: 'Separate', icon: 'brain'},
+  {num: '4', label: 'Mix & export', icon: 'tune-vertical'},
 ] as const;
 
 async function resolvePickedAudioUri(
@@ -169,7 +170,7 @@ export function HomeScreen({navigation}: Props) {
 
       const stableUri = await resolvePickedAudioUri(result.uri, result.name);
       const paths = await createSession(stableUri, result.name);
-      navigation.navigate('Processing', {
+      navigation.navigate('Crop', {
         sessionId: paths.sessionId,
         fileName: result.name,
       });

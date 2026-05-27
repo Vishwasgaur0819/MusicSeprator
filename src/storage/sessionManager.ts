@@ -1,5 +1,6 @@
 import RNFS from 'react-native-fs';
-import type {SessionPaths} from '../types/session';
+import type {CropMeta, SessionMeta, SessionPaths} from '../types/session';
+import {saveCroppedPcm} from '../audio/cropAudio';
 import {KEEP_SESSION_FILES_FOR_TESTING} from '../config/dev';
 
 function generateSessionId(): string {
@@ -42,6 +43,18 @@ export function getSessionPaths(
   };
 }
 
+export async function resolveSessionPaths(
+  sessionId: string,
+  fileName: string,
+): Promise<SessionPaths> {
+  const paths = getSessionPaths(sessionId, fileName);
+  const croppedPath = `${paths.dir}/original.cropped.wav`;
+  if (await RNFS.exists(croppedPath)) {
+    return {...paths, original: croppedPath};
+  }
+  return paths;
+}
+
 export async function createSession(
   sourceUri: string,
   fileName: string,
@@ -74,6 +87,65 @@ export async function createSession(
     JSON.stringify({fileName}),
     'utf8',
   );
+
+  return paths;
+}
+
+function getMetaPath(sessionId: string): string {
+  return `${getSessionDir(sessionId)}/meta.json`;
+}
+
+export async function readSessionMeta(
+  sessionId: string,
+): Promise<SessionMeta | null> {
+  const metaPath = getMetaPath(sessionId);
+  if (!(await RNFS.exists(metaPath))) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(await RNFS.readFile(metaPath, 'utf8')) as SessionMeta;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateSessionMeta(
+  sessionId: string,
+  patch: Partial<SessionMeta>,
+): Promise<SessionMeta> {
+  const current =
+    (await readSessionMeta(sessionId)) ??
+    ({fileName: 'Song'} satisfies SessionMeta);
+  const next: SessionMeta = {...current, ...patch};
+  await RNFS.writeFile(getMetaPath(sessionId), JSON.stringify(next), 'utf8');
+  return next;
+}
+
+export async function applyCropToSession(
+  sessionId: string,
+  fileName: string,
+  startSec: number,
+  endSec: number,
+  pcm: Float32Array,
+): Promise<SessionPaths> {
+  const paths = getSessionPaths(sessionId, fileName);
+  const croppedPath = `${paths.dir}/original.cropped.wav`;
+  const previousOriginal = paths.original;
+
+  await saveCroppedPcm(pcm, startSec, endSec, croppedPath);
+
+  if (
+    previousOriginal !== croppedPath &&
+    (await RNFS.exists(previousOriginal))
+  ) {
+    await RNFS.unlink(previousOriginal);
+  }
+
+  paths.original = croppedPath;
+
+  const crop: CropMeta = {startSec, endSec, applied: true};
+  await updateSessionMeta(sessionId, {fileName, crop});
 
   return paths;
 }

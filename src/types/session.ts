@@ -1,3 +1,14 @@
+export interface CropMeta {
+  startSec: number;
+  endSec: number;
+  applied: boolean;
+}
+
+export interface SessionMeta {
+  fileName: string;
+  crop?: CropMeta;
+}
+
 export interface SessionPaths {
   sessionId: string;
   dir: string;
